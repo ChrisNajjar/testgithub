@@ -1,13 +1,5 @@
 //test git
 
-
-
-
-
-
-
-
-
 /*code plusieur canard bouge cane a peche mouse score et tps ...*/
 
 #include <allegro.h>

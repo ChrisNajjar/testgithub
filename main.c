@@ -50,7 +50,7 @@ void charger_ressources() {
     if (!duck_image) {
         allegro_message("Error loading canard2.bmp");
         exit(1);
-    }
+    }//
 
     cursor_image = load_bitmap("../IMAGES/caneapechebmp.bmp", NULL);
     if (!cursor_image) {

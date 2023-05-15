@@ -1,0 +1,3 @@
+C:/Users/User/Desktop/Projet Algo S2/Peche au Canard General/PecheauCanard/cmake-build-debug/CMakeFiles/PecheauCanard.dir
+C:/Users/User/Desktop/Projet Algo S2/Peche au Canard General/PecheauCanard/cmake-build-debug/CMakeFiles/edit_cache.dir
+C:/Users/User/Desktop/Projet Algo S2/Peche au Canard General/PecheauCanard/cmake-build-debug/CMakeFiles/rebuild_cache.dir

@@ -7,20 +7,20 @@
 #define SCREEN_HEIGHT 600
 #define FPS 60
 #define TIMER_TICKS (1000 / FPS)
-#define LIMITE_HAUTE_EAU 100
-#define LIMITE_BASSE_EAU 500
 
-// Structures
 typedef struct {
     int x, y;
     bool is_caught;
     int speed;
     bool move_right;
+    bool is_dragging;
+
 } Duck;
 
 BITMAP *sourcebackground;
 BITMAP *duck_image;
 BITMAP *cursor_image;
+BITMAP *panier_image;
 
 Duck ducks[10];
 int score;
@@ -36,42 +36,44 @@ void initialiser_allegro() {
     set_gfx_mode(GFX_AUTODETECT_WINDOWED, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0);
     srand(time(NULL));
 }
-
-//Les images bmp
+// Les images bmp
 void charger_ressources() {
-    sourcebackground = load_bitmap("../lacbmp.bmp", NULL);
+    sourcebackground = load_bitmap("../IMAGES/lacbmp.bmp", NULL);
     if (!sourcebackground) {
         allegro_message("Error loading waterbmp.bmp");
         exit(1);
     }
-    BITMAP* background= create_bitmap(SCREEN_WIDTH,SCREEN_H);
+    BITMAP* background= create_bitmap(SCREEN_WIDTH,SCREEN_HEIGHT);
     stretch_blit(sourcebackground,background,0,0,sourcebackground->w,sourcebackground->h,0,0,background->w,background->h);
 
-
-
-
-
-    duck_image = load_bitmap("../canard4.bmp", NULL);
+    duck_image = load_bitmap("../IMAGES/canard2.bmp", NULL);
     if (!duck_image) {
-        allegro_message("Error loading canard1.bmp");
+        allegro_message("Error loading canard2.bmp");
         exit(1);
     }
 
-    cursor_image = load_bitmap("../caneapechebmp.bmp", NULL);
-
-
+    cursor_image = load_bitmap("../IMAGES/caneapechebmp.bmp", NULL);
     if (!cursor_image) {
         allegro_message("Error loading caneapechebmp.bmp");
         exit(1);
     }
 }
+
+BITMAP *charger_ressources_panier() {
+    BITMAP *panier_image = load_bitmap("../IMAGES/panierbmp.bmp", NULL);
+    if (!panier_image) {
+        allegro_message("Erreur lors du chargement de l'image du panier");
+        exit(EXIT_FAILURE);
+    }
+    return panier_image;
+}
 // Fonctions
-void creer_canard(Duck *duck) {//met le canard dans l ecran et bouge
-    duck->x = rand() % (SCREEN_WIDTH - duck_image->w);
-    duck->y = rand() % (600 - 413 + 1) + 413-duck_image->h;
-    duck->is_caught = false;
-    duck->speed = 1 + rand() % 3; // Set a random speed between 1 and 3
-    duck->move_right = rand() % 2; // Set a random initial direction (true for right, false for left)
+
+void draw_game(BITMAP *buffer, int panier_x, int panier_y, BITMAP *panier_image) {
+    draw_sprite(buffer, panier_image, 625, 225);
+    for (int i = 0; i < score; i++) {
+        stretch_sprite(buffer, duck_image, 10 + i * 50, SCREEN_HEIGHT - panier_image->h - 50, 50, 50);
+    }
 }
 
 void dessiner_canard(BITMAP *buffer, Duck *duck) {
@@ -80,40 +82,83 @@ void dessiner_canard(BITMAP *buffer, Duck *duck) {
     }
 }
 
+void dessiner_jeu(BITMAP *buffer, BITMAP *panier_image) {
+    draw_sprite(buffer, sourcebackground, 0, 0);
+    draw_sprite(buffer, panier_image, 625, 225); // Modifier la position du panier ici
+
+    for (int i = 0; i < 10; i++) {
+        dessiner_canard(buffer, &ducks[i]);
+    }
+
+    draw_sprite(buffer, cursor_image, mouse_x, mouse_y - cursor_image->h);
+
+    textprintf_ex(buffer, font, 10, 10, makecol(0, 0, 255), -1, "Score: %d", score);
+    textprintf_ex(buffer, font, 10, 30, makecol(247, 6, 151), -1, "Temps restant: %d", remaining_time / FPS);
+
+    if (game_over) {
+        textout_centre_ex(buffer, font, "Game Over", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, makecol(255, 0, 0), -1);
+    }
+}
+
+void creer_canard(Duck *duck) {
+    duck->x = rand() % (SCREEN_WIDTH - duck_image->w);
+    duck->y = rand() % (600 - 413 + 1) + 413-duck_image->h;
+    duck->is_caught = false;
+    duck->speed = 1 + rand() % 3;
+    duck->move_right = rand() % 2;
+}
+
 void attraper_canard(Duck *duck, int x, int y, bool is_mouse_clicked) {
     if (!duck->is_caught && is_mouse_clicked &&
         x >= duck->x && x <= duck->x + duck_image->w &&
         y >= duck->y && y <= duck->y + duck_image->h) {
-        duck->is_caught = true;
-        score++;
+        duck->is_dragging = true; // Le canard est maintenant en train d'être déplacé
     }
 }
 
-// Mise à jour du jeu
-void mise_a_jour_jeu() {
-    int canards_peches = 0; // Compteur de canards attrapés
+// Dans mise_a_jour_jeu
+void mise_a_jour_jeu(BITMAP *buffer, BITMAP *panier_image) {
+    int canards_peches = 0;
 
     for (int i = 0; i < 10; i++) {
         if (!ducks[i].is_caught) {
             attraper_canard(&ducks[i], mouse_x, mouse_y, (mouse_b & 1));
 
-            // mouvement canard
-            if (ducks[i].move_right) {
-                ducks[i].x += ducks[i].speed;
-            } else {
-                ducks[i].x -= ducks[i].speed;
+            ducks[i].x += ducks[i].speed;
+
+            if (ducks[i].x > SCREEN_WIDTH) {
+                ducks[i].x = 0;
             }
 
-            // collision mur
-            if (ducks[i].x < 0 || ducks[i].x > SCREEN_WIDTH - duck_image->w) {
-                ducks[i].move_right = !ducks[i].move_right;
+            if (ducks[i].is_caught) {
+                if (duck_image->w > 50 || duck_image->h > 50) {
+                    stretch_sprite(buffer, duck_image, 625 + i * 50, 225 - 50, 50, 50);
+                } else {
+                    draw_sprite(buffer, duck_image, 625 + i * 50, 225 - duck_image->h);
+                }
             }
+
+            // Déplacement du canard avec la souris
+            if (ducks[i].is_dragging && mouse_b & 1) {
+                // Le canard est en train d'être déplacé et le bouton de la souris est toujours enfoncé
+                ducks[i].x = mouse_x - duck_image->w / 2;
+                ducks[i].y = mouse_y - duck_image->h / 2;
+            }
+            else if (ducks[i].is_dragging && !(mouse_b & 1)) {
+                // Le canard est en train d'être déplacé mais le bouton de la souris a été relâché
+                ducks[i].is_dragging = false;
+                // Vérifiez si le canard est dans le panier
+                if (ducks[i].x >= 625 && ducks[i].y >= 225 && ducks[i].x <= 625 + panier_image->w && ducks[i].y <= 225 + panier_image->h) {
+                    ducks[i].is_caught = true;
+                    score++;
+                }
+            }
+
         } else {
-            canards_peches++; // Augmente le compteur de canards attrapés
+            canards_peches++;
         }
     }
 
-    // Si tous les canards ont été attrapés, terminez le jeu
     if (canards_peches == 10) {
         game_over = true;
     }
@@ -125,91 +170,53 @@ void mise_a_jour_jeu() {
     }
 }
 
-void dessiner_jeu(BITMAP *buffer) {
-    draw_sprite(buffer, sourcebackground, 0, 0);
-    for (int i = 0; i < 10; i++) {
-        dessiner_canard(buffer, &ducks[i]);
+    volatile int timer_counter = 0;
+    void timer_callback() {
+        timer_counter++;
     }
+    END_OF_FUNCTION(timer_callback)
 
-    draw_sprite(buffer, cursor_image, mouse_x, mouse_y-cursor_image->h);
+    void boucle_de_jeu() {
+        BITMAP *buffer = create_bitmap(SCREEN_WIDTH, SCREEN_HEIGHT);
+        BITMAP *panier_image = charger_ressources_panier();
 
-    textprintf_ex(buffer, font, 10, 10, makecol(255, 255, 255), -1, "Score: %d", score);
-    textprintf_ex(buffer, font, 10, 30, makecol(255, 255, 255), -1, "Time: %d", remaining_time / FPS);
+        for (int i = 0; i < 10; i++) {
+            creer_canard(&ducks[i]);
+        }
+        score = 0;
+        remaining_time = FPS * 60;
+        game_over = false;
 
-    if (game_over) {
-        textout_centre_ex(buffer, font, "Game Over", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, makecol(255, 0, 0), -1);
-    }
-}
+        install_int_ex(timer_callback, MSEC_TO_TIMER(TIMER_TICKS));
 
-volatile int timer_counter;
-void timer_callback();
+        while (!key[KEY_ESC] && !game_over) {
+            while (timer_counter > 0) {
+                mise_a_jour_jeu(buffer, panier_image);
+                timer_counter--;
+            }
 
-void boucle_de_jeu() {
-    BITMAP *buffer = create_bitmap(SCREEN_WIDTH, SCREEN_HEIGHT);
-    LOCK_VARIABLE(timer_counter);
-    LOCK_FUNCTION(timer_callback);
-    install_int_ex(timer_callback, MSEC_TO_TIMER(TIMER_TICKS));
-    // Initialiser le jeu
-    for (int i = 0; i < 10; i++) {
-        creer_canard(&ducks[i]);
-    }
-    score = 0;
-    remaining_time = FPS * 60; // Durée du jeu en secondes (exemple : 60 secondes)
-    game_over = false;
-
-    while (!key[KEY_ESC] && !game_over) {
-        while (timer_counter > 0) {
-            mise_a_jour_jeu();
-            timer_counter--;
+            dessiner_jeu(buffer, panier_image);
+            blit(buffer, screen, 0, 0, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+            draw_game(buffer, 10, SCREEN_HEIGHT - panier_image->h, panier_image);
         }
 
-        dessiner_jeu(buffer);
-        blit(buffer, screen, 0, 0, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+        destroy_bitmap(buffer);
+
+        destroy_bitmap(panier_image);
     }
 
-    destroy_bitmap(buffer);
-// Initialiser le jeu
-    for (int i = 0; i < 10; i++) {
-        creer_canard(&ducks[i]);
-    }
-    score = 0;
-    remaining_time = FPS * 60; // Durée du jeu en secondes (exemple : 60 secondes)
-    game_over = false;
-
-    while (!key[KEY_ESC] && !game_over) {
-        while (timer_counter > 0) {
-            mise_a_jour_jeu();
-            timer_counter--;
-        }
-
-        dessiner_jeu(buffer);
-        blit(buffer, screen, 0, 0, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    void liberer_ressources() {
+        destroy_bitmap(sourcebackground);
+        destroy_bitmap(duck_image);
+        destroy_bitmap(cursor_image);
     }
 
-    destroy_bitmap(buffer);
-}
+    int main() {
+        initialiser_allegro();
+        charger_ressources();
+        boucle_de_jeu();
+        liberer_ressources();
 
-// Terminer et libérer les ressources
-void nettoyer() {
-    destroy_bitmap(sourcebackground);
-    destroy_bitmap(duck_image);
-    destroy_bitmap(cursor_image);
-
-}
-
-int main() {
-    initialiser_allegro();
-    charger_ressources();
-    boucle_de_jeu();
-    nettoyer();
-    return 0;
-}
-END_OF_MAIN()
-
-// Fonction de rappel du timer
-volatile int timer_counter = 0;
-
-void timer_callback() {
-    timer_counter++;
-}
-END_OF_FUNCTION(timer_callback)
+        return 0;
+    }
+    END_OF_MAIN()

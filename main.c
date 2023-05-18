@@ -17,15 +17,20 @@ typedef struct {
 
 } Duck;
 
+
+
 BITMAP *sourcebackground;
 BITMAP *duck_image;
 BITMAP *cursor_image;
 BITMAP *panier_image;
 
+
 Duck ducks[10];
 int score;
 int remaining_time;
 bool game_over;
+int message_timer = 0;
+
 
 void initialiser_allegro() {
     allegro_init();
@@ -46,11 +51,11 @@ void charger_ressources() {
     BITMAP* background= create_bitmap(SCREEN_WIDTH,SCREEN_HEIGHT);
     stretch_blit(sourcebackground,background,0,0,sourcebackground->w,sourcebackground->h,0,0,background->w,background->h);
 
-    duck_image = load_bitmap("../IMAGES/canard2.bmp", NULL);
+    duck_image = load_bitmap("../IMAGES/canard1.bmp", NULL);
     if (!duck_image) {
-        allegro_message("Error loading canard2.bmp");
+        allegro_message("Error loading canard1.bmp");
         exit(1);
-    }//
+    }
 
     cursor_image = load_bitmap("../IMAGES/caneapechebmp.bmp", NULL);
     if (!cursor_image) {
@@ -84,19 +89,25 @@ void dessiner_canard(BITMAP *buffer, Duck *duck) {
 
 void dessiner_jeu(BITMAP *buffer, BITMAP *panier_image) {
     draw_sprite(buffer, sourcebackground, 0, 0);
-    draw_sprite(buffer, panier_image, 625, 225); // Modifier la position du panier ici
-
     for (int i = 0; i < 10; i++) {
         dessiner_canard(buffer, &ducks[i]);
     }
 
+    draw_sprite(buffer, panier_image, 625, 225);
     draw_sprite(buffer, cursor_image, mouse_x, mouse_y - cursor_image->h);
 
     textprintf_ex(buffer, font, 10, 10, makecol(0, 0, 255), -1, "Score: %d", score);
     textprintf_ex(buffer, font, 10, 30, makecol(247, 6, 151), -1, "Temps restant: %d", remaining_time / FPS);
 
+    if (message_timer > 0) {
+        textprintf_ex(buffer, font, 160, 30, makecol(255, 0, 0), -1, "! Vous avez perdu 5 secondes !");
+        message_timer--;
+    }
+
     if (game_over) {
         textout_centre_ex(buffer, font, "Game Over", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, makecol(255, 0, 0), -1);
+        textprintf_centre_ex(buffer, font, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 20, makecol(255, 255, 255), -1, "Score: %d", score);
+        textout_centre_ex(buffer, font, "Appuyez sur n'importe quelle touche pour recommencer", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 40, makecol(255, 255, 255), -1);
     }
 }
 
@@ -116,7 +127,6 @@ void attraper_canard(Duck *duck, int x, int y, bool is_mouse_clicked) {
     }
 }
 
-// Dans mise_a_jour_jeu
 void mise_a_jour_jeu(BITMAP *buffer, BITMAP *panier_image) {
     int canards_peches = 0;
 
@@ -151,6 +161,13 @@ void mise_a_jour_jeu(BITMAP *buffer, BITMAP *panier_image) {
                 if (ducks[i].x >= 625 && ducks[i].y >= 225 && ducks[i].x <= 625 + panier_image->w && ducks[i].y <= 225 + panier_image->h) {
                     ducks[i].is_caught = true;
                     score++;
+                } else {
+                    ducks[i].y = rand() % (600 - 413 + 1) + 413 - duck_image->h;
+                    remaining_time -= FPS * 5;
+                    message_timer = FPS * 10;
+                    if (remaining_time < 0) {
+                        remaining_time = 0;
+                    }
                 }
             }
 
@@ -169,28 +186,39 @@ void mise_a_jour_jeu(BITMAP *buffer, BITMAP *panier_image) {
         game_over = true;
     }
 }
-
     volatile int timer_counter = 0;
+
     void timer_callback() {
         timer_counter++;
     }
     END_OF_FUNCTION(timer_callback)
 
-    void boucle_de_jeu() {
-        BITMAP *buffer = create_bitmap(SCREEN_WIDTH, SCREEN_HEIGHT);
-        BITMAP *panier_image = charger_ressources_panier();
+void boucle_de_jeu() {
+    BITMAP *buffer;
+    BITMAP *panier_image;
+    bool restart = false;
+
+    do {
+        clear_keybuf(); // Effacer le tampon de clavier ici
+
+        buffer = create_bitmap(SCREEN_WIDTH, SCREEN_HEIGHT);
+        panier_image = charger_ressources_panier();
 
         for (int i = 0; i < 10; i++) {
             creer_canard(&ducks[i]);
         }
         score = 0;
-        remaining_time = FPS * 60;
+        remaining_time = FPS * 60; // Réinitialise le temps restant ici
         game_over = false;
 
         install_int_ex(timer_callback, MSEC_TO_TIMER(TIMER_TICKS));
 
-        while (!key[KEY_ESC] && !game_over) {
-            while (timer_counter > 0) {
+        while (!game_over) {
+            if(key[KEY_ESC]) {
+                game_over = true;
+                break;
+            }
+            while (timer_counter > 0 && !key[KEY_ESC]) {
                 mise_a_jour_jeu(buffer, panier_image);
                 timer_counter--;
             }
@@ -200,12 +228,35 @@ void mise_a_jour_jeu(BITMAP *buffer, BITMAP *panier_image) {
             draw_game(buffer, 10, SCREEN_HEIGHT - panier_image->h, panier_image);
         }
 
+        double temps_total = (FPS * 60 - remaining_time) / FPS; // Calculer la durée totale
+
+        if (game_over) {
+            clear(screen);
+            textout_centre_ex(screen, font, "Game Over", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, makecol(255, 0, 0), -1);
+            textprintf_centre_ex(screen, font, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 20, makecol(255, 255, 255), -1, "Score: %d", score);
+            textprintf_centre_ex(screen, font, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 40, makecol(255, 255, 255), -1, "Temps: %.2f secondes", temps_total);
+            textout_centre_ex(screen, font, "Appuyez sur ESPACE pour rejouer ou ESC pour quitter", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 60, makecol(255, 255, 255), -1);
+
+            while (!keypressed()) {
+                if (key[KEY_SPACE]) {
+                    restart = true;
+                    break;
+                }
+                else if (key[KEY_ESC]) {
+                    restart = false;
+                    break;
+                }
+            }
+
+            clear_keybuf();
+        }
+
         destroy_bitmap(buffer);
-
         destroy_bitmap(panier_image);
-    }
+    } while (restart);
+}
 
-    void liberer_ressources() {
+void liberer_ressources() {
         destroy_bitmap(sourcebackground);
         destroy_bitmap(duck_image);
         destroy_bitmap(cursor_image);
@@ -220,3 +271,14 @@ void mise_a_jour_jeu(BITMAP *buffer, BITMAP *panier_image) {
         return 0;
     }
     END_OF_MAIN()
+
+
+
+
+
+
+
+
+
+
+
